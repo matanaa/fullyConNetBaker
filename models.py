@@ -6,6 +6,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import pickle
 
 class model(nn.Module):
     def __init__(self, layers, name=""):
@@ -25,7 +26,7 @@ class model(nn.Module):
         return self.features(x)
 
 class Oven:
-    def __init__(self, input_size=28 * 28, optimizer=None, dropout=None, epoch=10, learning_rate=0.001, batch_size=100):
+    def __init__(self, input_size=51, optimizer=None, dropout=None, epoch=10, learning_rate=0.001, batch_size=100):
         """
         init the object
         :param input_size:
@@ -53,9 +54,10 @@ class Oven:
             self.optimizers_list = optimizer
 
         self.optimizer = None
+        self.layers = None
 
-
-
+    def set_layers(self,layers):
+        self.layers = layers
 
     def step_train(self, train_loader, epoch_i =10):
         """
@@ -67,7 +69,7 @@ class Oven:
         self.Net.train()
         for batch_idx, (data, labels) in enumerate(train_loader):
             self.optimizer.zero_grad()
-            output = self.Net.forward(Variable(data))
+            output = self.Net.forward(data)
             loss = F.nll_loss(output, labels)
             # self.total_loss.append(loss.data)
             loss.backward()
@@ -175,13 +177,15 @@ class Oven:
 
         for optimazier_name, optimazier_func in self.optimizers_list.items():
             print(f"[!]Checking {optimazier_name}")
-
             for lr in np.arange(self.lr_start, self.lr_end, self.lr_step):
 
-                net_to_check = model(layers=1)
-                net_to_check.step_train(train_loader)
-                print(f"[+]test on:lr: {lr} optimaize: {optimazier_name}")
-                curr_accuracy = net_to_check.validate(test_loader)
+                self.Net = model(layers=self.layers)
+                self.optimizer = optimazier_func(self.Net.parameters(), lr=lr)
+
+                self.step_train(train_loader, epoch_i=1)
+
+                print(f"[+]test on: lr: {lr} optimaize: {optimazier_name}")
+                curr_accuracy = self.validate(test_loader)
                 if best_accuracy < curr_accuracy:
                     best_accuracy = curr_accuracy
                     best_lr = lr
@@ -191,12 +195,11 @@ class Oven:
         print(best_accuracy, best_lr, best_optimazier)
         return (best_accuracy, best_lr, best_optimazier)
 
-
 class Chef:
     """
     class that manage the network
     """
-    def __init__(self,train_loader, test_loader, input_size=28 * 28, optimizer=None, dropout=None, epoch=10, learning_rate=0.001, batch_size=100):
+    def __init__(self,train_loader, test_loader, input_size=51, optimizer=None, dropout=None, epoch=10, learning_rate=0.001, batch_size=100):
         """
         init the object
         :param input_size:
@@ -206,34 +209,46 @@ class Chef:
         :param learning_rate:
         :param batch_size:
         """
+        #set data information
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.input_size = input_size
+        self.batch_size = batch_size
+        self.label_size = 2
+
+        #set train info
         self.epoch = epoch
         self.learning_rate = learning_rate
-        self.batch_size = batch_size
-        self.print_debug = False
-
+        self.dropout = dropout
         if not optimizer:
             self.optimizers_list = {"SGD": optim.SGD, "ADAM": optim.Adam, "RMSprop": optim.RMSprop, "AdaDelta": optim.Adadelta}
         else:
             self.optimizers_list = optimizer
 
-        self.dropout = dropout
+        #set print option
+        self.print_debug = False
+        self.debug_level = 10 #TODO:add print debug
 
-        self.debug_level = 10
-
+        #set network info
         self.depth_size = 3
         self.features_size_to_test = [52,256,512,1024,2046,52*2,52*4,52*6]
         self.features_size_to_test = [52,256]
-        self.label_size = 2
+
+        #save result
+        self.best_accuracy = 0
+        self.best_net = None
+
+    def set_network_length(self,length):
+        self.depth_size = length
+
+    def set_features_size_list(self,f_list):
+        self.features_size_to_test = f_list
 
     def find_best_arc(self):
         for next_size in self.features_size_to_test:
             first = [nn.Linear(self.input_size,next_size) ,
-                               nn.BatchNorm2d(next_size),nn.ReLU(inplace=True)]
+                               nn.BatchNorm1d(next_size),nn.ReLU(inplace=True)]
             self._recursiv_build_network_to_test(first,next_size)
-
 
     def _recursiv_build_network_to_test(self,currnet,last_input_size):
         # in the last net
@@ -243,18 +258,25 @@ class Chef:
             test_net.extend([nn.Linear(last_input_size,self.label_size) ,nn.LogSoftmax()])
             run_test = Oven(self.input_size, self.optimizers_list,self.dropout, self.epoch,
                             self.learning_rate,self.batch_size)
-
-            run_test.best_Values_for_model_without_droupout(self.train_loader,self.test_loader)
-
+            run_test.set_layers(test_net)
+            #run_test.print_debug = True
+            accuracy, lr, optimazier = run_test.best_Values_for_model_without_droupout(self.train_loader,self.test_loader)
+            self._check_new_result(accuracy, lr, optimazier,run_test)
 
         else:
             for next_size in self.features_size_to_test:
                 test_net = currnet.copy()
                 test_net.extend([nn.Linear(last_input_size,next_size) ,
-                               nn.BatchNorm2d(next_size),nn.ReLU(inplace=True)])
+                               nn.BatchNorm1d(next_size),nn.ReLU(inplace=True)])
 
                 self._recursiv_build_network_to_test(test_net,next_size)
 
+    def _check_new_result(self, accuracy,lr, optimazier,net):
+        if accuracy > self.best_accuracy:
+            print(f"found better params accuracy:{accuracy} lr:{lr} opt: {optimazier}")
+            self.best_accuracy = accuracy
+            pickle.dump(net, open(f"model_{accuracy}_accuracy.pkl", "wb"))
+            open(f"scheme_model_{accuracy}_accuracy.txt").write(net.model_summery())
 
     def __printer(self,text, level = 0):
         if level < self.debug_level:
