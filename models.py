@@ -1,12 +1,11 @@
 import torch
-dtype = torch.float
-device = torch.device("cpu")
 import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import pickle
+import os
 
 class model(nn.Module):
     def __init__(self, layers, name=""):
@@ -56,6 +55,18 @@ class Oven:
         self.optimizer = None
         self.layers = None
 
+        #cpu options
+        self.dev = "cpu"
+
+    def use_gpu(self, use=True):
+        if torch.cuda.is_available() and use:
+            self.dev = "cuda"
+            self.dtype = torch.cuda.FloatTensor
+            print("[!]using cuda GPU")
+        else:
+            self.dev = "cpu"
+            print("[!]using CPU")
+
     def set_layers(self,layers):
         self.layers = layers
 
@@ -69,8 +80,8 @@ class Oven:
         self.Net.train()
         for batch_idx, (data, labels) in enumerate(train_loader):
             self.optimizer.zero_grad()
-            output = self.Net.forward(data)
-            loss = F.nll_loss(output, labels)
+            output = self.Net.forward(data.to(self.dev))
+            loss = F.nll_loss(output, labels.to(self.dev))
             # self.total_loss.append(loss.data)
             loss.backward()
             self.optimizer.step()
@@ -91,10 +102,13 @@ class Oven:
         correct = 0
         with torch.no_grad():
             for data, target in test_loader:
+                target = target.to(self.dev)
+                data = data.to(self.dev)
                 output = self.Net(data)
                 test_loss += F.nll_loss(output, target, size_average=False).item() # sum up batch loss
                 pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
-                correct += pred.eq(target.view_as(pred)).cpu().sum()
+                # correct += pred.eq(target.view_as(pred)).cpu().sum()
+                correct += pred.eq(target.view_as(pred)).sum()
             test_loss /= len(test_loader.dataset)
             curr_accuracy = 100. * correct / len(test_loader.dataset)
             self.total_loss.append(test_loss)
@@ -180,6 +194,9 @@ class Oven:
             for lr in np.arange(self.lr_start, self.lr_end, self.lr_step):
 
                 self.Net = model(layers=self.layers)
+                if self.dev != "cpu":
+                    self.Net.cuda()
+
                 self.optimizer = optimazier_func(self.Net.parameters(), lr=lr)
 
                 self.step_train(train_loader, epoch_i=1)
@@ -194,6 +211,9 @@ class Oven:
                         f"[!!!]found better parrams:  accuracy: {best_accuracy} lr: {lr} optimaize: {best_optimazier} ")
         print(best_accuracy, best_lr, best_optimazier)
         return (best_accuracy, best_lr, best_optimazier)
+
+    def model_summery(self):
+        return self.Net.model_summery()
 
 class Chef:
     """
@@ -237,6 +257,17 @@ class Chef:
         #save result
         self.best_accuracy = 0
         self.best_net = None
+        self.dev = "cpu"
+
+    def use_gpu(self,use=True):
+        if torch.cuda.is_available() and use:
+            self.dev = "cuda"
+            self.dtype = torch.cuda.FloatTensor
+
+            print("[!]using cuda GPU")
+        else:
+            self.dev = "cpu"
+            print("[!]using CPU")
 
     def set_network_length(self,length):
         self.depth_size = length
@@ -260,6 +291,8 @@ class Chef:
                             self.learning_rate,self.batch_size)
             run_test.set_layers(test_net)
             #run_test.print_debug = True
+            if self.dev != "cpu":
+                run_test.use_gpu()
             accuracy, lr, optimazier = run_test.best_Values_for_model_without_droupout(self.train_loader,self.test_loader)
             self._check_new_result(accuracy, lr, optimazier,run_test)
 
@@ -275,8 +308,8 @@ class Chef:
         if accuracy > self.best_accuracy:
             print(f"found better params accuracy:{accuracy} lr:{lr} opt: {optimazier}")
             self.best_accuracy = accuracy
-            pickle.dump(net, open(f"model_{accuracy}_accuracy.pkl", "wb"))
-            open(f"scheme_model_{accuracy}_accuracy.txt").write(net.model_summery())
+            pickle.dump(net, open(f"model_len{self.depth_size}_{accuracy}_accuracy.pkl", "wb"))
+            # open(f"scheme_model_{accuracy}_accuracy.txt", "w").write(net.model_summery())
 
     def __printer(self,text, level = 0):
         if level < self.debug_level:
