@@ -43,6 +43,7 @@ class Oven:
         self.debug_level = 10
         self.total_loss = []
         self.total_accuracy = []
+        self.Net = None
 
         self.lr_start = 0.05
         self.lr_end= 0.5
@@ -55,8 +56,13 @@ class Oven:
         self.optimizer = None
         self.layers = None
 
+        #for nice output
+        self.epoch_i = 0
         #cpu options
         self.dev = "cpu"
+
+    def set_epoch(self,epoch):
+        self.epoch = epoch
 
     def use_gpu(self, use=True):
         if torch.cuda.is_available() and use:
@@ -66,6 +72,10 @@ class Oven:
         else:
             self.dev = "cpu"
             print("[!]using CPU")
+        if self.Net !=None:
+            self.Net.to(self.dev)
+
+
 
     def set_layers(self,layers):
         self.layers = layers
@@ -124,11 +134,15 @@ class Oven:
         :param test_loader:
         :return:
         """
+        self.total_loss = []
+        self.total_accuracy = []
         for epoch_i in range(self.epoch):
             print(f"[!]Train Epoch: {epoch_i}")
             self.step_train(train_loader, epoch_i)
-            self.validate(test_loader)
-            torch.save(self.Net.state_dict(), f"save_State{epoch_i}.tourch")
+            curr_accuracy = self.validate(test_loader)
+            self.epoch_i = epoch_i
+            self.pickle_save(path=f'results/epoch_{self.epoch_i}_{curr_accuracy}',filename=curr_accuracy,info=f'accuracy: {curr_accuracy}')
+            # torch.save(self.Net.state_dict(), f"save_State{epoch_i}.tourch")
 
     def do_train(self,train_loader):
         """
@@ -157,25 +171,31 @@ class Oven:
                 # print(f"{os.path.basename(test_loader.dataset.spects[i][0])},{self.test_step(data)}")
                 output_file.write(f"{os.path.basename(test_loader.dataset.spects[i][0])}, {classes[self.test_step(data)]}\n")
 
-    def showGraphs(self):
+    def showGraphs(self,save_path=None):
         """
         show the required graphs
         :return:
         """
         import matplotlib.pyplot as plt
-        plt.plot(range(1,self.epoch+1), self.total_loss, label=f'Loss - {self.Net.name()} ')
+        plt.plot(range(1,self.epoch_i+2), self.total_loss, label=f'Loss - {self.Net.name} ')
         plt.legend(bbox_to_anchor=(1.0, 1.00))
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         # plt.xticks(plt_learning)
-        plt.show()
-
-        plt.plot(range(1,self.epoch+1), self.total_accuracy, label=f'Accuracy - {self.Net.name()} ')
+        if save_path is None:
+            plt.show()
+        else:
+            plt.savefig(f"{save_path}/Loss.png")
+        plt.close()
+        plt.plot(range(1,self.epoch_i+2), self.total_accuracy, label=f'Accuracy - {self.Net.name} ')
         plt.legend(bbox_to_anchor=(1.0, 1.00))
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         # plt.xticks(plt_learning)
-        plt.show()
+        if save_path is None:
+            plt.show()
+        else:
+            plt.savefig(f"{save_path}/Accuracy.png")
 
     def best_Values_for_model_without_droupout(self,train_loader, test_loader):
         """
@@ -214,6 +234,28 @@ class Oven:
 
     def model_summery(self):
         return self.Net.model_summery()
+
+    def pickle_save(self,path='results/',filename='',info=""):
+        import os
+        os.makedirs(path, exist_ok=True)
+        pickle.dump(self, open(f"{path}/{filename}.pkl", "wb"))
+        info_file = open(f"{path}/{filename}_info.txt", "w")
+        info_file.write("-------------Layers-----------\n")
+        info_file.write(str(self.layers)+"\n")
+        info_file.write("-------------Epochs-----------\n")
+        info_file.write(str(self.epoch_i)+"\n")
+        info_file.write("-------------Learning rate-----------\n")
+        info_file.write(str(self.learning_rate) + "\n")
+        info_file.write("-------------Loss rate-----------\n")
+        info_file.write(str(self.total_loss[-1]) + "\n")
+        info_file.write("-------------Accuracy rate-----------\n")
+        info_file.write(str(self.total_accuracy[-1]) + "\n")
+        info_file.write("------------------------------"+"\n")
+        info_file.write(info+"\n")
+        self.showGraphs(path)
+
+
+
 
 class Chef:
     """
@@ -258,6 +300,9 @@ class Chef:
         self.best_accuracy = 0
         self.best_net = None
         self.dev = "cpu"
+
+    def set_epoch(self,epochs):
+        self.epoch = epochs
 
     def use_gpu(self,use=True):
         if torch.cuda.is_available() and use:
