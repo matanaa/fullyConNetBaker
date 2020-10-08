@@ -16,7 +16,7 @@ finder = Chef(train_loader, test_loader, optimizer={"AdaDelta":optim.Adadelta},b
 
 finder.set_features_size_list([256,512,1024,2048,52,52*2,52*4,52*6,51,51*2])
 finder.set_features_size_list([256,512,1024,52*8,52*2,52*6])
-finder.set_features_size_list([256,512,1024,2048])
+finder.set_features_size_list([256,512,1024])
 finder.set_network_length(10)
 finder.use_gpu()
 finder.find_best_arc()

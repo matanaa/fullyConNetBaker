@@ -115,7 +115,11 @@ class Oven:
                 target = target.to(self.dev)
                 data = data.to(self.dev)
                 output = self.Net(data)
-                test_loss += F.nll_loss(output, target, size_average=False).item() # sum up batch loss
+                try:
+                    test_loss += F.nll_loss(output, target, size_average=False).item() # sum up batch loss
+                except:
+                    print(data,output, target)
+
                 pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
                 # correct += pred.eq(target.view_as(pred)).cpu().sum()
                 correct += pred.eq(target.view_as(pred)).sum()

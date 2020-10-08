@@ -5,11 +5,11 @@ from models import *
 import pickle
 import argparse
 
-# pickle_file = r"C:\Users\matan.LIACOM\Desktop\test\model_len3_85.80199432373047_accuracy.pkl"
 pickle_file = r"model_len10_85.77799987792969_accuracy.pkl"
+data_set_path = r"../bughouse-partner-matching/data/Features2005.csv"
 
-# data_set_path = r"../bughouse-partner-matching/data/Features2005.csv"
-data_set_path = r"../bughouse/data/Features2005.csv"
+pickle_file = r"C:\Users\matan.LIACOM\Desktop\test\model_len3_85.80199432373047_accuracy.pkl"
+data_set_path = r"C:\Users\matan.LIACOM\PycharmProjects\bughouse-partner-matching\data\fake_20_20.csv"
 
 net = pickle.load(open(pickle_file,"rb"))
 

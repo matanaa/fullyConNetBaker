@@ -50,3 +50,6 @@ class GamesDataset(Dataset):
     def get_atter(self,index,atter):
         name = self.data.iloc[index][atter]
         return name
+
+
+
